@@ -1,6 +1,6 @@
 export interface GameState {
   roomId: string;
-  players: string[];
+  players: Array<{ id: string; username: string }>;
   maxPlayers: number;
   status: "LOBBY" | "INGAME" | "FINISHED";
 }

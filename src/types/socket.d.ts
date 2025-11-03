@@ -8,6 +8,7 @@ export interface ServerToClientEvents {
 export interface ClientToServerEvents {
   createRoom: (username, maxPlayers) => void;
   joinRoom: (username, roomId) => void;
+  reconnectRoom: (oldsocketid) => void;
 }
 
 export interface InterServerEvents {

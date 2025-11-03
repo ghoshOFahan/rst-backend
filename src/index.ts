@@ -30,7 +30,7 @@ app.use(
     credentials: true,
   })
 );
-
+const pendingTimeouts: Map<string, NodeJS.Timeout> = new Map();
 const port: number = parseInt(process.env.PORT || "4000", 10);
 const host = "0.0.0.0";
 const io = new Server<
@@ -56,11 +56,13 @@ function generateRoomId(): string {
 }
 io.on("connection", (socket) => {
   console.log("client connected");
-  socket.on("createRoom", async ({ username, maxPlayers }, callback) => {
+
+  //CREATION EVENT HANDLER
+  socket.on("createRoom", async (username, maxPlayers) => {
     const roomId = generateRoomId();
     const newGame: GameState = {
       roomId: roomId,
-      players: [username],
+      players: [{ id: socket.id, username }],
       maxPlayers: maxPlayers || 4,
       status: "LOBBY",
     };
@@ -70,7 +72,9 @@ io.on("connection", (socket) => {
     socket.emit("gameStateUpdate", newGame);
     console.log("Lobby created by:", username);
   });
-  socket.on("joinRoom", async ({ username, roomId }) => {
+
+  //JOIN EVENT HANDLER
+  socket.on("joinRoom", async (username, roomId) => {
     const gameState = await getGame(redis, roomId);
     if (gameState === null) return socket.emit("gameError", "game not found");
     if (
@@ -80,9 +84,9 @@ io.on("connection", (socket) => {
     ) {
       return socket.emit("gameError", "There was some error in joining room");
     }
-    gameState.players.push(username);
+    gameState.players.push({ id: socket.id, username: username });
     if (gameState.players.length === gameState.maxPlayers) {
-      gameState.status = "LOBBY";
+      gameState.status = "INGAME";
     }
     await setGame(redis, roomId, gameState);
     await setSocketRoom(redis, roomId, socket.id);
@@ -90,25 +94,108 @@ io.on("connection", (socket) => {
     //Broadcasting new state to every player in room
     io.to(roomId).emit("gameStateUpdate", gameState);
   });
+
+  //RECONNECTION EVENT HANDLER
+  socket.on("reconnectRoom", async (oldsocketid) => {
+    try {
+      if (pendingTimeouts.has(oldsocketid)) {
+        clearTimeout(pendingTimeouts.get(oldsocketid));
+        pendingTimeouts.delete(oldsocketid);
+      }
+      const roomId = await getSocketRoom(redis, oldsocketid);
+      if (!roomId)
+        return socket.emit(
+          "gameError",
+          "could not find room while reconnecting"
+        );
+
+      const gameState = await getGame(redis, roomId);
+      if (!gameState)
+        return socket.emit(
+          "gameError",
+          "could not find gameState while reconnecting"
+        );
+      if (!gameState.players || !Array.isArray(gameState.players)) {
+        return socket.emit(
+          "gameError",
+          "players array not found in game state"
+        );
+      }
+      const playerIndex = gameState.players.findIndex(
+        (player) => player.id === oldsocketid
+      );
+      if (playerIndex === -1)
+        return socket.emit("gameError", "player not found in game");
+
+      gameState.players[playerIndex]!.id = socket.id;
+
+      //REDIS MAPPINGS UPDATED
+      await redis.del(SOCKET_ROOM_KEY(oldsocketid));
+      await setSocketRoom(redis, socket.id, roomId);
+      await setGame(redis, roomId, gameState);
+      socket.join(roomId);
+      io.to(roomId).emit("gameStateUpdate", gameState);
+      console.log(
+        "Player reconnected successfully:",
+        gameState.players[playerIndex]!.username
+      );
+    } catch (error) {
+      console.error("There was some problem reconnecting", error);
+      socket.emit("gameError", "Failed to reconnect");
+    }
+  });
+
+  //DISCONNECTION EVENT HANDLER
   socket.on("disconnect", async () => {
     try {
+      const GRACE_PERIOD = 7000;
       const roomId = (await getSocketRoom(redis, socket.id)) ?? null;
       if (!roomId) return;
       const gameState = (await getGame(redis, roomId)) ?? null;
       if (!gameState) return;
-      gameState.players = gameState.players.filter((id) => id != socket.id);
-      await setGame(redis, roomId, gameState);
-      if (gameState.players.length === 0) {
-        await redis.del(GAME_SET_KEY(roomId));
-        await redis.del(SOCKET_ROOM_KEY(socket.id));
-        console.log("Room %s closed because all players left", roomId);
-        return;
+      //CANCEL PREVIOUS TIMEOUT IF EXISTS
+      if (pendingTimeouts.has(socket.id)) {
+        clearTimeout(pendingTimeouts.get(socket.id));
+        pendingTimeouts.delete(socket.id);
       }
-      await setGame(redis, roomId, gameState);
-      await redis.del(SOCKET_ROOM_KEY(socket.id));
+      //CLEAN UP TIMEOUT FUNCTION
+      const cleanupTimeout = setTimeout(() => {
+        (async () => {
+          try {
+            const gameState = (await getGame(redis, roomId)) ?? null;
+            if (!gameState) return;
+            const updatedPlayers = gameState.players.filter(
+              (player) => player.id !== socket.id
+            );
+            if (updatedPlayers.length === 0) {
+              await redis.del(GAME_SET_KEY(roomId));
+              console.log("Room %s closed because all players left", roomId);
+            } else {
+              gameState.players = updatedPlayers;
+              await setGame(redis, roomId, gameState);
+              io.to(roomId).emit("gameStateUpdate", gameState);
+            }
+            await redis.del(SOCKET_ROOM_KEY(socket.id));
+          } catch (error) {
+            console.error("Error during cleanup for player", error);
+          } finally {
+            pendingTimeouts.delete(socket.id);
+          }
+        })();
+      }, GRACE_PERIOD);
+      pendingTimeouts.set(socket.id, cleanupTimeout);
+      console.log(
+        "player %s has %d grace period left in room%s",
+        socket.id,
+        GRACE_PERIOD,
+        roomId
+      );
     } catch (error) {
       console.error("Error handling disconnect", error);
-      return;
+      if (pendingTimeouts.has(socket.id)) {
+        clearTimeout(pendingTimeouts.get(socket.id));
+        pendingTimeouts.delete(socket.id);
+      }
     }
   });
 });
