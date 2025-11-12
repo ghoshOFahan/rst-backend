@@ -58,7 +58,7 @@ io.on("connection", (socket) => {
   console.log("client connected");
 
   //CREATION EVENT HANDLER
-  socket.on("createRoom", async (username, maxPlayers) => {
+  socket.on("createRoom", async ({ username, maxPlayers }) => {
     const roomId = generateRoomId();
     const newGame: GameState = {
       roomId: roomId,
@@ -74,7 +74,7 @@ io.on("connection", (socket) => {
   });
 
   //JOIN EVENT HANDLER
-  socket.on("joinRoom", async (username, roomId) => {
+  socket.on("joinRoom", async ({ username, roomId }) => {
     const gameState = await getGame(redis, roomId);
     if (gameState === null) return socket.emit("gameError", "game not found");
     if (
@@ -205,7 +205,7 @@ app.get("/", (req: Request, res: Response) => {
 });
 httpServer.listen(port, host, () => {
   if (process.env.PORT) {
-    console.log("service is live and listening on port%d", port);
+    console.log("service is live and listening on port %d", port);
   } else {
     console.log("you can access the page locally at http://localhost:%d", port);
   }

@@ -32,8 +32,8 @@ export async function getGame(
 }
 export async function setSocketRoom(
   redisClient: Redis,
-  roomId: string,
-  socketId: string
+  socketId: string,
+  roomId: string
 ) {
   try {
     const result = await redisClient.set(SOCKET_ROOM_KEY(socketId), roomId);
