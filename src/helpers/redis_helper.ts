@@ -11,6 +11,7 @@ export async function setGame(
     const jsonState = JSON.stringify(gameState);
     const result = await redisClient.set(GAME_SET_KEY(roomId), jsonState);
     console.log("Redis Room state saved for", roomId);
+    console.log(`Current players:${gameState.players}`);
     return result;
   } catch (error) {
     console.error("Failed to save Room state for", roomId, error);
@@ -43,7 +44,7 @@ export async function setSocketRoom(
     return null;
   }
 }
-export async function getSocketRoom(redisClient: Redis, socketId: string) {
+export async function getSocketRoom(socketId: string, redisClient: Redis) {
   try {
     const roomId = await redisClient.get(SOCKET_ROOM_KEY(socketId));
     if (roomId == null) return null;

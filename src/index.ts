@@ -67,7 +67,7 @@ io.on("connection", (socket) => {
       status: "LOBBY",
     };
     await setGame(redis, roomId, newGame);
-    await setSocketRoom(redis, roomId, socket.id);
+    await setSocketRoom(redis, socket.id, roomId);
     socket.join(roomId);
     socket.emit("gameStateUpdate", newGame);
     console.log("Lobby created by:", username);
@@ -87,9 +87,10 @@ io.on("connection", (socket) => {
     gameState.players.push({ id: socket.id, username: username });
     if (gameState.players.length === gameState.maxPlayers) {
       gameState.status = "INGAME";
+      console.log(`${username} joined the room`);
     }
     await setGame(redis, roomId, gameState);
-    await setSocketRoom(redis, roomId, socket.id);
+    await setSocketRoom(redis, socket.id, roomId);
     socket.join(roomId);
     //Broadcasting new state to every player in room
     io.to(roomId).emit("gameStateUpdate", gameState);
@@ -102,18 +103,18 @@ io.on("connection", (socket) => {
         clearTimeout(pendingTimeouts.get(oldsocketid));
         pendingTimeouts.delete(oldsocketid);
       }
-      const roomId = await getSocketRoom(redis, oldsocketid);
+      const roomId = await getSocketRoom(oldsocketid, redis);
       if (!roomId)
         return socket.emit(
           "gameError",
-          "could not find room while reconnecting"
+          "could not find room while reconnecting due to roomID"
         );
 
       const gameState = await getGame(redis, roomId);
       if (!gameState)
         return socket.emit(
           "gameError",
-          "could not find gameState while reconnecting"
+          "could not find gameState while reconnecting due to gamestate"
         );
       if (!gameState.players || !Array.isArray(gameState.players)) {
         return socket.emit(
@@ -149,7 +150,7 @@ io.on("connection", (socket) => {
   socket.on("disconnect", async () => {
     try {
       const GRACE_PERIOD = 7000;
-      const roomId = (await getSocketRoom(redis, socket.id)) ?? null;
+      const roomId = (await getSocketRoom(socket.id, redis)) ?? null;
       if (!roomId) return;
       const gameState = (await getGame(redis, roomId)) ?? null;
       if (!gameState) return;
