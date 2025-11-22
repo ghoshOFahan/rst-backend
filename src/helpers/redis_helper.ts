@@ -83,16 +83,6 @@ export async function getLastWord(redisClient: Redis, roomId: string) {
     return null;
   }
 }
-export async function getRecentWord(
-  redisClient: Redis,
-  roomId: string,
-  count = 10
-) {
-  try {
-    const key = WORD_HISTORY_KEY(roomId);
-    return await redisClient.lrange(key, -count, -1);
-  } catch (error) {
-    console.error("Failed to fetch recent words:", error);
-    return [];
-  }
+export async function getWords(redisClient: Redis, roomId: string) {
+  return await redisClient.lrange(`room:${roomId}:words`, 0, -1);
 }

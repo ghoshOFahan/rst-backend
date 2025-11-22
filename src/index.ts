@@ -21,6 +21,7 @@ import {
   SOCKET_ROOM_KEY,
   getLastWord,
   pushWord,
+  getWords,
 } from "./helpers/redis_helper.js";
 import { judgeWords } from "./ai/judge.js";
 
@@ -68,6 +69,9 @@ io.on("connection", (socket) => {
       players: [{ id: socket.id, username }],
       maxPlayers: maxPlayers || 4,
       status: "LOBBY",
+      currentPlayerId: socket.id,
+      isAiThinking: false,
+      wordHistory: [],
     };
     await setGame(redis, roomId, newGame);
     await setSocketRoom(redis, socket.id, roomId);
@@ -105,8 +109,6 @@ io.on("connection", (socket) => {
       console.log("gamestate not found for the room :", roomId);
       return;
     }
-    const player = gameState.players.find((player) => player.id === playerId);
-    const playerName = player?.username ?? "unknown player";
     io.to(roomId).emit("aiThinking", {
       roomId: roomId,
       isThinking: true,
@@ -117,16 +119,31 @@ io.on("connection", (socket) => {
       : { score: 1, isValid: true };
     if (ruling.isValid) {
       await pushWord(redis, roomId, word);
+      const currentPlayerIndex = gameState.players.findIndex(
+        (p) => p.id === playerId
+      );
+      const nextPlayerIndex =
+        (currentPlayerIndex + 1) % gameState.players.length;
+      gameState.currentPlayerId = gameState.players[nextPlayerIndex]?.id;
+      await setGame(redis, roomId, gameState);
     }
+    const fullHistory = await getWords(redis, roomId);
+    const mergedState = {
+      ...gameState,
+      wordHistory: fullHistory,
+    };
     io.to(roomId).emit("aiRuled", {
       roomId,
       playerId,
-      playerName,
+      playerName:
+        gameState.players.find((p) => p.id === playerId)?.username ??
+        "error in fetching name",
       lastWord,
       newWord: word,
       score: ruling.score,
       isValid: ruling.isValid,
     });
+    io.to(roomId).emit("gameStateUpdate", mergedState);
     io.to(roomId).emit("aiThinking", { roomId, isThinking: false });
   });
 
