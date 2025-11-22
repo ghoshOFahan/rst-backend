@@ -19,7 +19,10 @@ import {
   setSocketRoom,
   GAME_SET_KEY,
   SOCKET_ROOM_KEY,
+  getLastWord,
+  pushWord,
 } from "./helpers/redis_helper.js";
+import { judgeWords } from "./ai/judge.js";
 
 const app = express();
 const httpServer = createServer(app);
@@ -94,6 +97,37 @@ io.on("connection", (socket) => {
     socket.join(roomId);
     //Broadcasting new state to every player in room
     io.to(roomId).emit("gameStateUpdate", gameState);
+  });
+  //SUBMIT WORD HANDLER
+  socket.on("submitWord", async ({ roomId, word, playerId }) => {
+    const gameState = await getGame(redis, roomId);
+    if (!gameState) {
+      console.log("gamestate not found for the room :", roomId);
+      return;
+    }
+    const player = gameState.players.find((player) => player.id === playerId);
+    const playerName = player?.username ?? "unknown player";
+    io.to(roomId).emit("aiThinking", {
+      roomId: roomId,
+      isThinking: true,
+    });
+    const lastWord = await getLastWord(redis, roomId);
+    const ruling = lastWord
+      ? await judgeWords(lastWord, word)
+      : { score: 1, isValid: true };
+    if (ruling.isValid) {
+      await pushWord(redis, roomId, word);
+    }
+    io.to(roomId).emit("aiRuled", {
+      roomId,
+      playerId,
+      playerName,
+      lastWord,
+      newWord: word,
+      score: ruling.score,
+      isValid: ruling.isValid,
+    });
+    io.to(roomId).emit("aiThinking", { roomId, isThinking: false });
   });
 
   //RECONNECTION EVENT HANDLER
