@@ -12,7 +12,12 @@ export async function setGame(
     const jsonState = JSON.stringify(gameState);
     const result = await redisClient.set(GAME_SET_KEY(roomId), jsonState);
     console.log("Redis Room state saved for", roomId);
-    console.log(`Current players:${gameState.players}`);
+    console.log(
+      `Current player:${
+        gameState.players.find((p) => p.id === gameState.currentPlayerId)
+          ?.username
+      }`
+    );
     return result;
   } catch (error) {
     console.error("Failed to save Room state for", roomId, error);
@@ -24,9 +29,24 @@ export async function getGame(
   roomId: string
 ): Promise<GameState | null> {
   try {
-    const gameState = await redisClient.get(GAME_SET_KEY(roomId));
-    if (gameState === null) return null;
-    return JSON.parse(gameState);
+    // 1. Fetch the base GameState (JSON)
+    const gameStateJson = await redisClient.get(GAME_SET_KEY(roomId));
+    if (gameStateJson === null) return null;
+
+    // 2. Fetch the Word History (List)
+    const wordHistory = await redisClient.lrange(
+      WORD_HISTORY_KEY(roomId),
+      0,
+      -1
+    );
+
+    // 3. Parse and Merge
+    const gameState = JSON.parse(gameStateJson);
+
+    // overwrite or add the wordHistory property with the fresh list from Redis
+    gameState.wordHistory = wordHistory;
+
+    return gameState;
   } catch (error) {
     console.error("Error in fetching details of room", error);
     return null;
@@ -84,5 +104,5 @@ export async function getLastWord(redisClient: Redis, roomId: string) {
   }
 }
 export async function getWords(redisClient: Redis, roomId: string) {
-  return await redisClient.lrange(`room:${roomId}:words`, 0, -1);
+  return await redisClient.lrange(WORD_HISTORY_KEY(roomId), 0, -1);
 }

@@ -124,7 +124,8 @@ io.on("connection", (socket) => {
       );
       const nextPlayerIndex =
         (currentPlayerIndex + 1) % gameState.players.length;
-      gameState.currentPlayerId = gameState.players[nextPlayerIndex]?.id;
+      gameState.currentPlayerId =
+        gameState.players[nextPlayerIndex]?.id ?? "unknown";
       await setGame(redis, roomId, gameState);
     }
     const fullHistory = await getWords(redis, roomId);
