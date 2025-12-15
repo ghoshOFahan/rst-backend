@@ -6,7 +6,7 @@ if (!process.env.GEMINI_API_KEY) {
 }
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 const model = genAI.getGenerativeModel({
-  model: "models/gemini-2.0-flash-001",
+  model: "models/gemini-2.5-flash-lite",
 });
 
 export async function getFunnyComment(gameSummary: string): Promise<string> {

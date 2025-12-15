@@ -4,6 +4,7 @@ export interface ServerToClientEvents {
   gameStateUpdate: (game: GameState) => void;
   gameError: (error: string) => void;
   aiThinking: (data: { roomId: string; isThinking: boolean }) => void;
+  gameEnded: (data: { gameState: GameState; commentary: string }) => void;
   aiRuled: (data: {
     roomId: string;
     playerId: string;
@@ -12,14 +13,17 @@ export interface ServerToClientEvents {
     newWord: string;
     score: number;
     isValid: boolean;
+    isEliminated: boolean;
+    reason: string;
   }) => void;
 }
 
 export interface ClientToServerEvents {
-  createRoom: ({ username, maxPlayers }) => void;
-  joinRoom: ({ username, roomId }) => void;
+  createRoom: ({ username, maxPlayers, clientId }) => void;
+  joinRoom: ({ username, roomId, clientId }) => void;
   reconnectRoom: (oldsocketid) => void;
   submitWord: ({ roomId, word, playerId }) => void;
+  leaveRoom: ({ roomId, clientId }) => void;
 }
 
 export interface InterServerEvents {

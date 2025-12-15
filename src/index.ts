@@ -22,8 +22,10 @@ import {
   getLastWord,
   pushWord,
   getWords,
+  WORD_HISTORY_KEY,
 } from "./helpers/redis_helper.js";
 import { judgeWords } from "./ai/judge.js";
+import { getFunnyComment } from "./ai/aiCommentator.js";
 
 const app = express();
 const httpServer = createServer(app);
@@ -58,15 +60,24 @@ function generateRoomId(): string {
   }
   return result;
 }
+function getNextActivePlayerId(players: any[], currentId: string) {
+  const currentIndex = players.findIndex((p) => p.id === currentId);
+  if (currentIndex === -1) return currentId;
+  let nextIndex = (currentIndex + 1) % players.length;
+  while (players[nextIndex].isEliminated && nextIndex !== currentIndex) {
+    nextIndex = (nextIndex + 1) % players.length;
+  }
+  return players[nextIndex].id;
+}
 io.on("connection", (socket) => {
   console.log("client connected");
 
   //CREATION EVENT HANDLER
-  socket.on("createRoom", async ({ username, maxPlayers }) => {
+  socket.on("createRoom", async ({ username, maxPlayers, clientId }) => {
     const roomId = generateRoomId();
     const newGame: GameState = {
       roomId: roomId,
-      players: [{ id: socket.id, username }],
+      players: [{ id: socket.id, username, clientId }],
       maxPlayers: maxPlayers || 4,
       status: "LOBBY",
       currentPlayerId: socket.id,
@@ -81,7 +92,7 @@ io.on("connection", (socket) => {
   });
 
   //JOIN EVENT HANDLER
-  socket.on("joinRoom", async ({ username, roomId }) => {
+  socket.on("joinRoom", async ({ username, roomId, clientId }) => {
     const gameState = await getGame(redis, roomId);
     if (gameState === null) return socket.emit("gameError", "game not found");
     if (
@@ -91,7 +102,7 @@ io.on("connection", (socket) => {
     ) {
       return socket.emit("gameError", "There was some error in joining room");
     }
-    gameState.players.push({ id: socket.id, username: username });
+    gameState.players.push({ id: socket.id, username: username, clientId });
     if (gameState.players.length === gameState.maxPlayers) {
       gameState.status = "INGAME";
       console.log(`${username} joined the room`);
@@ -113,20 +124,82 @@ io.on("connection", (socket) => {
       roomId: roomId,
       isThinking: true,
     });
-    const lastWord = await getLastWord(redis, roomId);
-    const ruling = lastWord
-      ? await judgeWords(lastWord, word)
-      : { score: 1, isValid: true };
+    const startsWithRST = /^[rst]/i.test(word);
+    let ruling = { isValid: false, score: 0 };
+    let eliminationReason = "";
+    if (startsWithRST) {
+      console.log(`Player ${playerId} fell into the RST trap!`);
+      ruling.isValid = false;
+      eliminationReason = "Used forbidden letter (R, S, T)!";
+    } else {
+      const lastWord = await getLastWord(redis, roomId);
+      if (!lastWord) {
+        console.log("redis returned no last word");
+      } else {
+        console.log("Last word now will be validating it");
+      }
+      ruling = lastWord
+        ? await judgeWords(lastWord, word)
+        : { score: 1, isValid: true };
+      if (!ruling.isValid) {
+        console.log("Word is not related to previous word");
+        eliminationReason = "Word is not related to previous word";
+      }
+    }
     if (ruling.isValid) {
       await pushWord(redis, roomId, word);
-      const currentPlayerIndex = gameState.players.findIndex(
-        (p) => p.id === playerId
+      gameState.currentPlayerId = getNextActivePlayerId(
+        gameState.players,
+        playerId
       );
-      const nextPlayerIndex =
-        (currentPlayerIndex + 1) % gameState.players.length;
-      gameState.currentPlayerId =
-        gameState.players[nextPlayerIndex]?.id ?? "unknown";
       await setGame(redis, roomId, gameState);
+    } else {
+      console.log(`Eliminating player ${playerId}`);
+
+      const playerIndex = gameState.players.findIndex((p) => p.id === playerId);
+      if (playerIndex !== -1 && gameState) {
+        gameState.players[playerIndex]!.isEliminated = true;
+      }
+      const activePlayers = gameState.players.filter((p) => !p.isEliminated);
+      if (activePlayers.length <= 1) {
+        gameState.status = "FINISHED";
+        gameState.winner =
+          activePlayers.length === 1 ? activePlayers[0]!.username : "No One";
+        await setGame(redis, roomId, gameState);
+        const fullHistory = await getWords(redis, roomId);
+        const gameSummary = `
+          Winner: ${gameState.winner}. 
+          Players: ${gameState.players
+            .map(
+              (p) =>
+                `${p.username} (${p.isEliminated ? "Eliminated" : "Survivor"})`
+            )
+            .join(", ")}. 
+          Word Chain: ${fullHistory.join(" -> ")}.
+        `;
+
+        let commentary =
+          "The AI is taking a nap (Rate Limit hit), but congrats on the game!";
+
+        try {
+          commentary = await getFunnyComment(gameSummary);
+        } catch (error) {
+          console.error("AI Commentary failed due to rate limit:", error);
+          commentary =
+            "Review the word chain above! (AI Commentator is currently overloaded)";
+        }
+        io.to(roomId).emit("gameEnded", {
+          gameState,
+          commentary,
+        });
+      } else {
+        // Game continues, pass turn to next survivor
+        gameState.currentPlayerId = getNextActivePlayerId(
+          gameState.players,
+          playerId
+        );
+        await setGame(redis, roomId, gameState);
+      }
     }
     const fullHistory = await getWords(redis, roomId);
     const mergedState = {
@@ -139,106 +212,150 @@ io.on("connection", (socket) => {
       playerName:
         gameState.players.find((p) => p.id === playerId)?.username ??
         "error in fetching name",
-      lastWord,
+      lastWord: await getLastWord(redis, roomId),
       newWord: word,
       score: ruling.score,
       isValid: ruling.isValid,
+      isEliminated: !ruling.isValid,
+      reason: eliminationReason,
     });
     io.to(roomId).emit("gameStateUpdate", mergedState);
     io.to(roomId).emit("aiThinking", { roomId, isThinking: false });
   });
 
   //RECONNECTION EVENT HANDLER
-  socket.on("reconnectRoom", async (oldsocketid) => {
+  socket.on("reconnectRoom", async ({ roomId, clientId }) => {
     try {
-      if (pendingTimeouts.has(oldsocketid)) {
-        clearTimeout(pendingTimeouts.get(oldsocketid));
-        pendingTimeouts.delete(oldsocketid);
-      }
-      const roomId = await getSocketRoom(oldsocketid, redis);
-      if (!roomId)
-        return socket.emit(
-          "gameError",
-          "could not find room while reconnecting due to roomID"
-        );
-
       const gameState = await getGame(redis, roomId);
-      if (!gameState)
-        return socket.emit(
-          "gameError",
-          "could not find gameState while reconnecting due to gamestate"
-        );
-      if (!gameState.players || !Array.isArray(gameState.players)) {
-        return socket.emit(
-          "gameError",
-          "players array not found in game state"
-        );
+      if (!gameState) {
+        socket.emit("gameError", "game not found");
+        return;
       }
-      const playerIndex = gameState.players.findIndex(
-        (player) => player.id === oldsocketid
-      );
-      if (playerIndex === -1)
-        return socket.emit("gameError", "player not found in game");
 
-      gameState.players[playerIndex]!.id = socket.id;
+      const player = gameState.players.find((p) => p.clientId === clientId);
+      if (!player) {
+        socket.emit("gameError", "player not found");
+        return;
+      }
+      if (pendingTimeouts.has(player.id)) {
+        clearTimeout(pendingTimeouts.get(player.id)!);
+        pendingTimeouts.delete(player.id);
+      }
+      await redis.del(SOCKET_ROOM_KEY(player.id));
+      player.id = socket.id;
 
-      //REDIS MAPPINGS UPDATED
-      await redis.del(SOCKET_ROOM_KEY(oldsocketid));
       await setSocketRoom(redis, socket.id, roomId);
       await setGame(redis, roomId, gameState);
+
       socket.join(roomId);
+      socket.emit("gameStateUpdate", gameState);
       io.to(roomId).emit("gameStateUpdate", gameState);
-      console.log(
-        "Player reconnected successfully:",
-        gameState.players[playerIndex]!.username
-      );
-    } catch (error) {
-      console.error("There was some problem reconnecting", error);
-      socket.emit("gameError", "Failed to reconnect");
+
+      console.log("Player reconnected:", player.username);
+    } catch (err) {
+      console.error("Reconnect failed", err);
+      socket.emit("gameError", "reconnect failed");
     }
   });
+  //LEAVE ROOM EVENT HANDLER
+  socket.on("leaveRoom", async ({ roomId, clientId }) => {
+    try {
+      const gameState = await getGame(redis, roomId);
+      if (!gameState) return;
+
+      const player = gameState.players.find((p) => p.clientId === clientId);
+      if (!player) return;
+
+      console.log(`Player ${player.username} explicitly left room ${roomId}`);
+
+      // cancel pending disconnect cleanup
+      if (pendingTimeouts.has(player.id)) {
+        clearTimeout(pendingTimeouts.get(player.id)!);
+        pendingTimeouts.delete(player.id);
+      }
+
+      await handlePlayerExit(player.id, clientId, roomId);
+    } catch (error) {
+      console.error("Error handling leaveRoom", error);
+    }
+  });
+  async function handlePlayerExit(
+    socketId: string,
+    clientId: string,
+    roomId: string
+  ) {
+    const gameState = await getGame(redis, roomId);
+    if (!gameState) return;
+
+    const updatedPlayers = gameState.players.filter(
+      (p) => p.clientId !== clientId
+    );
+
+    if (updatedPlayers.length === 0) {
+      await redis.del(GAME_SET_KEY(roomId));
+      await redis.del(WORD_HISTORY_KEY(roomId));
+      console.log("Room %s closed and deleted.", roomId);
+    } else {
+      gameState.players = updatedPlayers;
+
+      if (gameState.currentPlayerId === socketId) {
+        gameState.currentPlayerId = getNextActivePlayerId(
+          gameState.players,
+          socketId
+        );
+      }
+
+      await setGame(redis, roomId, gameState);
+      io.to(roomId).emit("gameStateUpdate", gameState);
+    }
+
+    await redis.del(SOCKET_ROOM_KEY(socketId));
+  }
 
   //DISCONNECTION EVENT HANDLER
   socket.on("disconnect", async () => {
     try {
       const GRACE_PERIOD = 7000;
-      const roomId = (await getSocketRoom(socket.id, redis)) ?? null;
+
+      const roomId = await getSocketRoom(socket.id, redis);
       if (!roomId) return;
-      const gameState = (await getGame(redis, roomId)) ?? null;
+
+      const gameState = await getGame(redis, roomId);
       if (!gameState) return;
-      //CANCEL PREVIOUS TIMEOUT IF EXISTS
+
+      const disconnectedPlayer = gameState.players.find(
+        (p) => p.id === socket.id
+      );
+      if (!disconnectedPlayer) return;
+      const clientId = disconnectedPlayer.clientId;
       if (pendingTimeouts.has(socket.id)) {
-        clearTimeout(pendingTimeouts.get(socket.id));
+        clearTimeout(pendingTimeouts.get(socket.id)!);
         pendingTimeouts.delete(socket.id);
       }
-      //CLEAN UP TIMEOUT FUNCTION
+
       const cleanupTimeout = setTimeout(() => {
         (async () => {
           try {
-            const gameState = (await getGame(redis, roomId)) ?? null;
-            if (!gameState) return;
-            const updatedPlayers = gameState.players.filter(
-              (player) => player.id !== socket.id
+            const latestGame = await getGame(redis, roomId);
+            if (!latestGame) return;
+            const reconnected = latestGame.players.some(
+              (p) => p.clientId === clientId && p.id !== socket.id
             );
-            if (updatedPlayers.length === 0) {
-              await redis.del(GAME_SET_KEY(roomId));
-              console.log("Room %s closed because all players left", roomId);
-            } else {
-              gameState.players = updatedPlayers;
-              await setGame(redis, roomId, gameState);
-              io.to(roomId).emit("gameStateUpdate", gameState);
-            }
-            await redis.del(SOCKET_ROOM_KEY(socket.id));
+            if (reconnected) return;
+
+            await handlePlayerExit(socket.id, clientId, roomId);
           } catch (error) {
-            console.error("Error during cleanup for player", error);
+            console.error("Error during disconnect cleanup", error);
           } finally {
             pendingTimeouts.delete(socket.id);
           }
         })();
       }, GRACE_PERIOD);
+
       pendingTimeouts.set(socket.id, cleanupTimeout);
+
       console.log(
-        "player %s has %d grace period left in room%s",
+        "player %s has %dms grace period in room %s",
         socket.id,
         GRACE_PERIOD,
         roomId
@@ -246,13 +363,12 @@ io.on("connection", (socket) => {
     } catch (error) {
       console.error("Error handling disconnect", error);
       if (pendingTimeouts.has(socket.id)) {
-        clearTimeout(pendingTimeouts.get(socket.id));
+        clearTimeout(pendingTimeouts.get(socket.id)!);
         pendingTimeouts.delete(socket.id);
       }
     }
   });
 });
-
 app.get("/", (req: Request, res: Response) => {
   res.send(`<h1>hey there welcome to rst!</h1>`);
 });

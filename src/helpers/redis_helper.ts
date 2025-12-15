@@ -29,20 +29,17 @@ export async function getGame(
   roomId: string
 ): Promise<GameState | null> {
   try {
-    // 1. Fetch the base GameState (JSON)
+    //Fetch the base GameState
     const gameStateJson = await redisClient.get(GAME_SET_KEY(roomId));
     if (gameStateJson === null) return null;
-
-    // 2. Fetch the Word History (List)
+    //Fetch the Word History
     const wordHistory = await redisClient.lrange(
       WORD_HISTORY_KEY(roomId),
       0,
       -1
     );
-
-    // 3. Parse and Merge
+    //Parse and Merge
     const gameState = JSON.parse(gameStateJson);
-
     // overwrite or add the wordHistory property with the fresh list from Redis
     gameState.wordHistory = wordHistory;
 
