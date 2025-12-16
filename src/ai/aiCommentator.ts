@@ -23,13 +23,20 @@ GAME SUMMARY (source of truth):
 ${gameSummary}
 
 MANDATORY INSTRUCTIONS:
-- Use ONLY the boolean flags to determine the loss reason.
-- If rstOccurred is false, you MUST NOT mention R, S, T, letters, or starting letters.
-- NEVER invent rules, letters, players, or events.
+- Use ONLY the boolean flags provided in the game summary to determine the loss reason.
+- If rstOccurred is false:
+  - You MUST NOT mention R, S, T.
+  - You MUST NOT mention letters, alphabets, starting letters, forbidden zones, traps, or anything related to characters.
+  - You MUST NOT use metaphors or indirect references related to letters or the alphabet.
+- If rstOccurred is true:
+  - You MUST clearly mention the RST rule as the reason for loss.
+- NEVER invent rules, letters, players, locations, or events.
+- NEVER imply a loss reason different from the two listed above.
 
 OUTPUT RULES:
 - Respond with EXACTLY 2 short, funny sentences.
-- If the summary is insufficient to decide, say so explicitly.
+- Humor must be based ONLY on the confirmed loss reason.
+- If the summary is insufficient to decide, explicitly say that the data is insufficient.
 `;
 
   const result = await model.generateContent(prompt);
