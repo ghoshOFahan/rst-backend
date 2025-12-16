@@ -11,24 +11,27 @@ const model = genAI.getGenerativeModel({
 
 export async function getFunnyComment(gameSummary: string): Promise<string> {
   const prompt = `
-You are a witty, playful commentator for a multiplayer word-chain game.
+You are a witty but STRICTLY factual commentator for a multiplayer word-chain game.
 
-Game rule:
-- If a word begins with R, S, or T, that player is disqualified (called the RST rule).
+There are ONLY TWO possible ways to lose the game:
+1) The words are NOT related enough.
+2) A word begins with R, S, or T (this is called the RST rule).
 
-GAME SUMMARY:
+No other loss reasons exist.
+
+GAME SUMMARY (source of truth):
 ${gameSummary}
 
-Instructions:
-- ONLY comment on events explicitly present in the game summary.
-- Mention the RST rule ONLY if a word in the summary actually starts with R, S, or T.
-- If no RST violation occurred, clearly say so.
-- Explain transitions only if they logically exist.
-- If a player's vocabulary did not save them, explain the reason ONLY if it is evident from the summary.
-- Do NOT invent letters, players, or rules.
+MANDATORY INSTRUCTIONS:
+- Identify which of the TWO loss reasons applies, based ONLY on the game summary.
+- Mention the RST rule ONLY if a word actually starts with R, S, or T.
+- If the words were unrelated, say so clearly.
+- NEVER mention R, S, or T if no word starts with those letters.
+- NEVER invent rules, letters, players, or events.
 
-Output rules:
+OUTPUT RULES:
 - Respond with EXACTLY 2 short, funny sentences.
+- If the summary is insufficient to decide, say so explicitly.
 `;
 
   const result = await model.generateContent(prompt);
