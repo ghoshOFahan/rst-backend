@@ -11,7 +11,7 @@ const model = genAI.getGenerativeModel({
 
 export async function getFunnyComment(gameSummary: string): Promise<string> {
   const prompt = `
-You are a STRICTLY factual commentator for a multiplayer word-chain game.
+You are a witty but STRICTLY factual commentator for a multiplayer word-chain game.
 
 There are ONLY TWO possible ways to lose the game:
 1) The words are NOT related enough.
@@ -34,7 +34,8 @@ MANDATORY INSTRUCTIONS:
 - NEVER imply a loss reason different from the two listed above.
 
 OUTPUT RULES:
-- Respond with EXACTLY 2 short precise sentences about the gameplay.
+- Respond with EXACTLY 2 short precise sentences.
+- Humor must be based ONLY on the confirmed loss reason.
 `;
 
   const result = await model.generateContent(prompt);
