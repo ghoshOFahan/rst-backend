@@ -176,6 +176,7 @@ io.on("connection", (socket) => {
             )
             .join(", ")}. 
           Word Chain: ${fullHistory.join(" -> ")}.
+          Elimination Reason: ${eliminationReason}.
         `;
 
         let commentary =
