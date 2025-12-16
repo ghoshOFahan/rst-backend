@@ -167,8 +167,14 @@ io.on("connection", (socket) => {
           activePlayers.length === 1 ? activePlayers[0]!.username : "No One";
         await setGame(redis, roomId, gameState);
         const fullHistory = await getWords(redis, roomId);
-        const rstOccurred = startsWithRST;
-        const unrelatedOccurred = !startsWithRST && !ruling.isValid;
+        let rstOccurred = false;
+        let unrelatedOccurred = false;
+        let lastWord = await getLastWord(redis, roomId);
+        if (startsWithRST) {
+          rstOccurred = true;
+        } else if (!ruling.isValid && lastWord) {
+          unrelatedOccurred = true;
+        }
         const gameSummary = `
           Winner: ${gameState.winner}
           Players: ${gameState.players
@@ -179,7 +185,7 @@ io.on("connection", (socket) => {
           LossFlags:
           - rstOccurred: ${rstOccurred}
           - unrelatedOccurred: ${unrelatedOccurred}
-      `;
+        `;
         let commentary =
           "The AI is taking a nap (Rate Limit hit), but congrats on the game!";
 
