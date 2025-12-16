@@ -175,7 +175,7 @@ io.on("connection", (socket) => {
             .map((p) => `${p.username}:${p.isEliminated ? "OUT" : "IN"}`)
             .join(", ")}
           WordChain: ${fullHistory.join(" -> ")}
-          
+
           LossFlags:
           - rstOccurred: ${rstOccurred}
           - unrelatedOccurred: ${unrelatedOccurred}
@@ -317,7 +317,7 @@ io.on("connection", (socket) => {
   //DISCONNECTION EVENT HANDLER
   socket.on("disconnect", async () => {
     try {
-      const GRACE_PERIOD = 7000;
+      const GRACE_PERIOD = 12000;
 
       const roomId = await getSocketRoom(socket.id, redis);
       if (!roomId) return;
