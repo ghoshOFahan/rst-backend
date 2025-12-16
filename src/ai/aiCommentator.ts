@@ -11,7 +11,7 @@ const model = genAI.getGenerativeModel({
 
 export async function getFunnyComment(gameSummary: string): Promise<string> {
   const prompt = `
-You are a witty, playful commentator for a multiplayer word-chain game where R,S,T beginning words lead players to disqualification.
+You are a witty, playful commentator for a multiplayer word-chain game where R,S,T beginning words lead players to disqualification and refer to this rule as the RST rule and then make the sentence.
 You see the words and find and explain the transition between words.
 You ONLY produce a short, funny 3-sentence comment.
 Mention the players name and also mention how the players vocabulary saved them and if not explain the reason also.
