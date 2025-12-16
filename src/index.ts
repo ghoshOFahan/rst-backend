@@ -23,6 +23,7 @@ import {
   pushWord,
   getWords,
   WORD_HISTORY_KEY,
+  findWord,
 } from "./helpers/redis_helper.js";
 import { judgeWords } from "./ai/judge.js";
 import { getFunnyComment } from "./ai/aiCommentator.js";
@@ -131,6 +132,10 @@ io.on("connection", (socket) => {
       console.log(`Player ${playerId} fell into the RST trap!`);
       ruling.isValid = false;
       eliminationReason = "Used forbidden letter (R, S, T)!";
+    } else if (await findWord(redis, roomId, word)) {
+      console.log("Word has been used before");
+      eliminationReason =
+        "Word has been used before and therefore player is disqualified";
     } else {
       const lastWord = await getLastWord(redis, roomId);
       if (!lastWord) {

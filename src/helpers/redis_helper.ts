@@ -103,3 +103,16 @@ export async function getLastWord(redisClient: Redis, roomId: string) {
 export async function getWords(redisClient: Redis, roomId: string) {
   return await redisClient.lrange(WORD_HISTORY_KEY(roomId), 0, -1);
 }
+//HELPER TO FLAG DUPLICATE WORDS
+export async function findWord(
+  redisClient: Redis,
+  roomId: string,
+  word: string
+): Promise<boolean> {
+  try {
+    const words = await redisClient.lrange(WORD_HISTORY_KEY(roomId), 0, -1);
+    return !words.includes(word.toLowerCase());
+  } catch (error) {
+    return true;
+  }
+}
