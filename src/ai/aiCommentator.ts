@@ -23,10 +23,8 @@ GAME SUMMARY (source of truth):
 ${gameSummary}
 
 MANDATORY INSTRUCTIONS:
-- Identify which of the TWO loss reasons applies, based ONLY on the game summary.
-- Mention the RST rule ONLY if a word actually starts with R, S, or T.
-- If the words were unrelated, say so clearly.
-- NEVER mention R, S, or T if no word starts with those letters.
+- Use ONLY the boolean flags to determine the loss reason.
+- If rstOccurred is false, you MUST NOT mention R, S, T, letters, or starting letters.
 - NEVER invent rules, letters, players, or events.
 
 OUTPUT RULES:
