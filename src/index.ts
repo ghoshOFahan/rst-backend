@@ -146,6 +146,10 @@ io.on("connection", (socket) => {
       console.log("gamestate not found for the room :", roomId);
       return;
     }
+    if (gameState.currentPlayerId !== socket.id) {
+      console.warn("Out-of-turn submission blocked", socket.id);
+      return;
+    }
     io.to(roomId).emit("aiThinking", {
       roomId: roomId,
       isThinking: true,
