@@ -160,12 +160,17 @@ io.on("connection", (socket) => {
     const startsWithRST = /^[rst]/i.test(word);
     let ruling = { isValid: false, score: 0 };
     let eliminationReason = "";
+    let rstOccurred = false;
+    let unrelatedOccurred = false;
+    let repeatedOccurred = false;
     if (startsWithRST) {
       console.log(`Player ${playerId} fell into the RST trap!`);
       ruling.isValid = false;
+      rstOccurred = true;
       eliminationReason = `Player ${playerName} used word "${word}" which starts with R/S/T`;
     } else if (await findWord(redis, roomId, word)) {
       console.log("Word has been used before");
+      repeatedOccurred = true;
       eliminationReason = `Word has been used before and therefore player ${playerName} is disqualified`;
     } else {
       const lastWord = await getLastWord(redis, roomId);
@@ -179,6 +184,7 @@ io.on("connection", (socket) => {
         : { score: 1, isValid: true };
       if (!ruling.isValid) {
         console.log("Word is not related to previous word");
+        unrelatedOccurred = true;
         eliminationReason = `${playerName} entered ${word} and it is not related to ${lastWord}`;
       }
     }
@@ -203,14 +209,6 @@ io.on("connection", (socket) => {
           activePlayers.length === 1 ? activePlayers[0]!.username : "No One";
         await setGame(redis, roomId, gameState);
         const fullHistory = await getWords(redis, roomId);
-        let rstOccurred = false;
-        let unrelatedOccurred = false;
-        let lastWord = await getLastWord(redis, roomId);
-        if (startsWithRST) {
-          rstOccurred = true;
-        } else if (!ruling.isValid && lastWord) {
-          unrelatedOccurred = true;
-        }
         const gameSummary = `
           Winner: ${gameState.winner}
           Players: ${gameState.players
@@ -220,6 +218,7 @@ io.on("connection", (socket) => {
 
           LossFlags:
           - rstOccurred: ${rstOccurred}
+          - unrelatedOccurred: ${unrelatedOccurred}
           - unrelatedOccurred: ${unrelatedOccurred}
         `;
         let commentary =
