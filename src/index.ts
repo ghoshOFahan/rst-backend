@@ -125,17 +125,18 @@ io.on("connection", (socket) => {
       roomId: roomId,
       isThinking: true,
     });
+    const playerObject = gameState.players.find((p) => p.id === playerId);
+    const playerName = playerObject ? playerObject.username : "A player";
     const startsWithRST = /^[rst]/i.test(word);
     let ruling = { isValid: false, score: 0 };
     let eliminationReason = "";
     if (startsWithRST) {
       console.log(`Player ${playerId} fell into the RST trap!`);
       ruling.isValid = false;
-      eliminationReason = "Used forbidden letter (R, S, T)!";
+      eliminationReason = `Player ${playerName} used word "${word}" which starts with R/S/T`;
     } else if (await findWord(redis, roomId, word)) {
       console.log("Word has been used before");
-      eliminationReason =
-        "Word has been used before and therefore player is disqualified";
+      eliminationReason = `Word has been used before and therefore player ${playerName} is disqualified`;
     } else {
       const lastWord = await getLastWord(redis, roomId);
       if (!lastWord) {
@@ -148,7 +149,7 @@ io.on("connection", (socket) => {
         : { score: 1, isValid: true };
       if (!ruling.isValid) {
         console.log("Word is not related to previous word");
-        eliminationReason = `${lastWord} is not related to ${word}`;
+        eliminationReason = `${playerName} entered ${word} and it is not related to ${lastWord}`;
       }
     }
     if (ruling.isValid) {
