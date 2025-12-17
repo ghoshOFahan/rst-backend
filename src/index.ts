@@ -148,7 +148,7 @@ io.on("connection", (socket) => {
         : { score: 1, isValid: true };
       if (!ruling.isValid) {
         console.log("Word is not related to previous word");
-        eliminationReason = "Word is not related to previous word";
+        eliminationReason = `${lastWord} is not related to ${word}`;
       }
     }
     if (ruling.isValid) {
