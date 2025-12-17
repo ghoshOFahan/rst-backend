@@ -1,6 +1,3 @@
-
-
-```md
 # RST – Real-Time Word Chain Game (Backend)
 
 Repository: https://github.com/ghoshOFahan/rst-backend  
@@ -9,10 +6,8 @@ Repository: https://github.com/ghoshOFahan/rst-backend
 
 ## @Overview
 
-This repository contains the backend server for **RST**, a real-time multiplayer word-chain game.  
-It is a standalone **Node.js + Express + Socket.IO** application with **Redis-backed persistence**, deployed on Render.
-
-The backend acts as the **single authority** for game state, rule enforcement, turn validation, and AI judgement.
+This repository contains the authoritative backend server for **RST**, a real-time multiplayer word-chain game.  
+Implemented as a standalone **Node.js + Express + Socket.IO** service, it enforces all game rules, manages real-time state via Redis, and integrates AI-based validation.
 
 ---
 
@@ -21,89 +16,53 @@ The backend acts as the **single authority** for game state, rule enforcement, t
 - Runtime: Node.js
 - Language: TypeScript (ES Modules)
 - Framework: Express
-- WebSockets: Socket.IO
-- Database: Redis (ioredis)
-- AI: Google Generative AI / Embedding Models
+- Database: Redis (ioredis) for high-speed persistence
+- AI Services: Google Generative AI (Gemini) and Embedding Models
 - Deployment: Render
 
 ---
 
-## @Core Principles
+## @Core Architecture
 
-### @Server Authority
-Clients cannot:
-- Decide turns
-- Validate words
-- End games
+### @Server Authority Model
+The backend is the **single source of truth**. All critical decisions are enforced on the server, including player eligibility, word validity, and player elimination.
 
-All validation and state transitions occur on the server.
-
-### @Persistent State
-Redis is used for:
-- Game state storage
-- Socket-to-room mappings
-- Word history tracking
-- Reconnection handling
-
-This avoids in-memory data loss and supports crash resilience.
-
----
-
-## @Game Lifecycle
-
-1. Validate active player
-2. Enforce rule constraints (RST rule, duplicate words)
-3. AI-based validation
-4. Update Redis-backed game state
-5. Broadcast updates to all connected players
+### @Redis-Based State Management
+Redis is used instead of volatile in-memory storage to ensure stability. This supports:
+- Persistence for room and player data
+- Word history tracking for each active game
+- Reliable reconnection handling and crash resilience
 
 ---
 
 ## @AI Architecture
 
+
+
 ### @Generative AI Judge
-- Uses structured outputs
-- Enforced via schema validation
-- Returns `isValid` and a factual explanation
+- Utilizes structured outputs enforced by schemas
+- Returns a boolean validity flag and contextual, witty commentary
 
 ### @Embedding-Based Scorekeeper
-- Uses vector embeddings
-- Computes cosine similarity
-- Faster and cost-efficient alternative
-- Designed as a non-sacrificial fallback system
+- Calculates **Cosine Similarity** between words for ultra-fast validation
+- Acts as a cost-efficient, high-speed fallback for the generative system
+
+---
+
+## @Game Lifecycle
+
+1. **Validation**: Server verifies turn ownership and the "RST rule" (words must not start with R, S, or T)
+2. **AI Processing**: AI validates the word's relationship to the chain
+3. **State Update**: Authoritative updates are saved to Redis
+4. **Broadcast**: Updated state is emitted to all connected clients
 
 ---
 
 ## @Reconnection Handling
 
-- Players are identified using persistent client identifiers
-- Socket IDs are remapped on reconnect
-- Grace period before cleanup
-- Rooms are deleted automatically when empty
-
----
-
-## @Run Development Server
-
-```bash
-npm run dev
-````
-
----
-
-## @Build
-
-```bash
-npm run build
-```
-
----
-
-## @Start
-
-```bash
-npm start
-```
+- Players are identified via persistent client identifiers
+- Socket IDs are remapped to existing player profiles in Redis upon reconnect
+- Automatic room cleanup when no players remain active
 
 ---
 
@@ -113,23 +72,6 @@ Create a `.env` file:
 
 ```env
 PORT=4000
-REDIS_URL=redis://...
-FRONTEND_URL=https://rst.vercel.app
-GOOGLE_API_KEY=your_api_key
-```
-
----
-
-## @Deployment
-
-The backend is deployed on **Render**.
-External keep-alive pings are recommended to prevent cold starts on free tiers.
-
----
-
-## @Author
-
-Ahan Ghosh
-
-```
-```
+REDIS_URL=redis://your-redis-url
+FRONTEND_URL=https://frontend url get from frontend
+GOOGLE_API_KEY=your_google_api_key
