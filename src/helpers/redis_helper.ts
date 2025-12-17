@@ -111,7 +111,7 @@ export async function findWord(
 ): Promise<boolean> {
   try {
     const words = await redisClient.lrange(WORD_HISTORY_KEY(roomId), 0, -1);
-    return words.includes(word.toLowerCase());
+    return words.includes(word);
   } catch (error) {
     return false;
   }
