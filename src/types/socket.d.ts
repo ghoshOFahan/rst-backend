@@ -22,7 +22,7 @@ export interface ClientToServerEvents {
   createRoom: ({ username, maxPlayers, clientId }) => void;
   joinRoom: ({ username, roomId, clientId }) => void;
   reconnectRoom: (oldsocketid) => void;
-  submitWord: ({ roomId, word, playerId }) => void;
+  submitWord: ({ roomId, word }) => void;
   leaveRoom: ({ roomId, clientId }) => void;
 }
 

@@ -75,6 +75,10 @@ io.on("connection", (socket) => {
 
   //CREATION EVENT HANDLER
   socket.on("createRoom", async ({ username, maxPlayers, clientId }) => {
+    if (!clientId) {
+      socket.emit("gameError", "clientId missing");
+      return;
+    }
     const roomId = generateRoomId();
     const newGame: GameState = {
       roomId: roomId,
@@ -94,6 +98,10 @@ io.on("connection", (socket) => {
 
   //JOIN EVENT HANDLER
   socket.on("joinRoom", async ({ username, roomId, clientId }) => {
+    if (!clientId) {
+      socket.emit("gameError", "clientId missing");
+      return;
+    }
     const gameState = await getGame(redis, roomId);
     if (gameState === null) return socket.emit("gameError", "game not found");
     if (
@@ -103,10 +111,27 @@ io.on("connection", (socket) => {
     ) {
       return socket.emit("gameError", "There was some error in joining room");
     }
+    const alreadyInRoom = gameState.players.some(
+      (p) => p.clientId === clientId
+    );
+
+    if (alreadyInRoom) {
+      socket.emit("gameError", "player already in room");
+      return;
+    }
     gameState.players.push({ id: socket.id, username: username, clientId });
     if (gameState.players.length === gameState.maxPlayers) {
       gameState.status = "INGAME";
-      console.log(`${username} joined the room`);
+      console.log(
+        "Player joined:",
+        username,
+        "clientId:",
+        clientId,
+        "socketId:",
+        socket.id,
+        "room:",
+        roomId
+      );
     }
     await setGame(redis, roomId, gameState);
     await setSocketRoom(redis, socket.id, roomId);
@@ -115,7 +140,7 @@ io.on("connection", (socket) => {
     io.to(roomId).emit("gameStateUpdate", gameState);
   });
   //SUBMIT WORD HANDLER
-  socket.on("submitWord", async ({ roomId, word, playerId }) => {
+  socket.on("submitWord", async ({ roomId, word }) => {
     const gameState = await getGame(redis, roomId);
     if (!gameState) {
       console.log("gamestate not found for the room :", roomId);
@@ -125,6 +150,7 @@ io.on("connection", (socket) => {
       roomId: roomId,
       isThinking: true,
     });
+    const playerId = socket.id;
     const playerObject = gameState.players.find((p) => p.id === playerId);
     const playerName = playerObject ? playerObject.username : "A player";
     const startsWithRST = /^[rst]/i.test(word);
@@ -239,6 +265,10 @@ io.on("connection", (socket) => {
 
   //RECONNECTION EVENT HANDLER
   socket.on("reconnectRoom", async ({ roomId, clientId }) => {
+    if (!clientId) {
+      socket.emit("gameError", "clientId missing");
+      return;
+    }
     try {
       const gameState = await getGame(redis, roomId);
       if (!gameState) {
@@ -273,6 +303,10 @@ io.on("connection", (socket) => {
   });
   //LEAVE ROOM EVENT HANDLER
   socket.on("leaveRoom", async ({ roomId, clientId }) => {
+    if (!clientId) {
+      socket.emit("gameError", "clientId missing");
+      return;
+    }
     try {
       const gameState = await getGame(redis, roomId);
       if (!gameState) return;
