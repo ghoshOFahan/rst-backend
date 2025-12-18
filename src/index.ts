@@ -209,17 +209,21 @@ io.on("connection", (socket) => {
           activePlayers.length === 1 ? activePlayers[0]!.username : "No One";
         await setGame(redis, roomId, gameState);
         const fullHistory = await getWords(redis, roomId);
+        const lastValidWord = await getLastWord(redis, roomId);
         const gameSummary = `
           Winner: ${gameState.winner}
           Players: ${gameState.players
             .map((p) => `${p.username}:${p.isEliminated ? "OUT" : "IN"}`)
             .join(", ")}
           WordChain: ${fullHistory.join(" -> ")}
-
+          Elimination events:
+            Rejected Word: "${word}"
+            Previous Valid Word: "${lastValidWord}"
+            Reason: ${eliminationReason}
           LossFlags:
-          - rstOccurred: ${rstOccurred}
-          - unrelatedOccurred: ${unrelatedOccurred}
-          - unrelatedOccurred: ${unrelatedOccurred}
+            rstOccurred: ${rstOccurred}
+            repeatedOccurred: ${repeatedOccurred}
+            unrelatedOccurred: ${unrelatedOccurred}
         `;
         let commentary =
           "The AI is taking a nap (Rate Limit hit), but congrats on the game!";
